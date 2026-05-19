@@ -1004,6 +1004,17 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             auto_copy_context=args.copy_paste,
             auto_accept_architect=args.auto_accept_architect,
             add_gitignore_files=args.add_gitignore_files,
+            oacs_context=args.oacs_context,
+            oacs_actor=args.oacs_actor,
+            oacs_scope=args.oacs_scope,
+            oacs_budget=args.oacs_budget,
+            oacs_command=args.oacs_command,
+            oacs_log_file=args.oacs_log_file,
+            oacs_memory_limit=args.oacs_memory_limit,
+            oacs_max_injected_chars=args.oacs_max_injected_chars,
+            oacs_max_injected_tokens_estimate=args.oacs_max_injected_tokens_estimate,
+            oacs_evidence_strict=args.oacs_evidence_strict,
+            oacs_strict=args.oacs_strict,
         )
     except UnknownEditFormat as err:
         io.tool_error(str(err))

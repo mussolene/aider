@@ -267,6 +267,71 @@ def get_parser(default_config_files, git_root):
     )
 
     ##########
+    group = parser.add_argument_group("OACS context settings")
+    group.add_argument(
+        "--oacs-context",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable Open Agent Context Standard capsule injection before model calls.",
+    )
+    group.add_argument(
+        "--oacs-actor",
+        default="aider-oacs",
+        help="OACS actor id/name used for policy-checked context builds.",
+    )
+    group.add_argument(
+        "--oacs-scope",
+        default="project",
+        help="OACS context scope passed to acs context build.",
+    )
+    group.add_argument(
+        "--oacs-budget",
+        type=int,
+        default=800,
+        help="OACS context token budget passed to acs context build.",
+    )
+    group.add_argument(
+        "--oacs-command",
+        default="acs",
+        help="ACS CLI command path.",
+    )
+    group.add_argument(
+        "--oacs-log-file",
+        default=None,
+        help="Optional JSONL log file for OACS context hook measurements.",
+    ).complete = shtab.FILE
+    group.add_argument(
+        "--oacs-memory-limit",
+        type=int,
+        default=3,
+        help="Maximum memory records to include from acs memory query.",
+    )
+    group.add_argument(
+        "--oacs-max-injected-chars",
+        type=int,
+        default=1800,
+        help="Hard character budget for injected OACS capsule text.",
+    )
+    group.add_argument(
+        "--oacs-max-injected-tokens-estimate",
+        type=int,
+        default=450,
+        help="Hard approximate token budget for injected OACS capsule text.",
+    )
+    group.add_argument(
+        "--oacs-evidence-strict",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Require model answers to stay grounded to the OACS capsule and visible repository context.",
+    )
+    group.add_argument(
+        "--oacs-strict",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Fail the request if OACS context/memory commands fail. Default is fail-open.",
+    )
+
+    ##########
     group = parser.add_argument_group("History Files")
     default_input_history_file = (
         os.path.join(git_root, ".aider.input.history") if git_root else ".aider.input.history"

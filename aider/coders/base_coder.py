@@ -37,6 +37,7 @@ from aider.io import ConfirmGroup, InputOutput
 from aider.linter import Linter
 from aider.llm import litellm
 from aider.models import RETRY_TIMEOUT
+from aider.oacs_context import OACSContextConfig, OACSContextProvider
 from aider.reasoning_tags import (
     REASONING_TAG,
     format_reasoning_content,
@@ -338,6 +339,17 @@ class Coder:
         file_watcher=None,
         auto_copy_context=False,
         auto_accept_architect=True,
+        oacs_context=False,
+        oacs_actor="aider-oacs",
+        oacs_scope="project",
+        oacs_budget=800,
+        oacs_command="acs",
+        oacs_log_file=None,
+        oacs_memory_limit=3,
+        oacs_max_injected_chars=1800,
+        oacs_max_injected_tokens_estimate=450,
+        oacs_evidence_strict=False,
+        oacs_strict=False,
     ):
         # Fill in a dummy Analytics if needed, but it is never .enable()'d
         self.analytics = analytics if analytics is not None else Analytics()
@@ -352,6 +364,21 @@ class Coder:
 
         self.auto_copy_context = auto_copy_context
         self.auto_accept_architect = auto_accept_architect
+        self.oacs_context_provider = OACSContextProvider(
+            OACSContextConfig(
+                enabled=oacs_context,
+                actor=oacs_actor,
+                scope=oacs_scope,
+                budget=oacs_budget,
+                command=oacs_command,
+                log_file=oacs_log_file,
+                memory_limit=oacs_memory_limit,
+                max_injected_chars=oacs_max_injected_chars,
+                max_injected_tokens_estimate=oacs_max_injected_tokens_estimate,
+                evidence_strict=oacs_evidence_strict,
+                strict=oacs_strict,
+            )
+        )
 
         self.ignore_mentions = ignore_mentions
         if not self.ignore_mentions:
@@ -750,6 +777,21 @@ class Coder:
     def get_repo_messages(self):
         repo_messages = []
         repo_content = self.get_repo_map()
+        oacs_message = self.oacs_context_provider.build_message(
+            intent=self._oacs_intent(),
+            task_text=self.get_cur_message_text(),
+            git_root=self.root,
+            visible_files=self._oacs_visible_files(),
+            repo_map_chars=len(repo_content or ""),
+        )
+        if oacs_message:
+            repo_messages += [
+                oacs_message,
+                dict(
+                    role="assistant",
+                    content="Ok.",
+                ),
+            ]
         if repo_content:
             repo_messages += [
                 dict(role="user", content=repo_content),
@@ -759,6 +801,22 @@ class Coder:
                 ),
             ]
         return repo_messages
+
+    def _oacs_visible_files(self):
+        files = set()
+        for fname in set(self.abs_fnames) | set(self.abs_read_only_fnames):
+            files.add(self.get_rel_fname(fname))
+        return files
+
+    def _oacs_intent(self):
+        text = self.get_cur_message_text().lower()
+        if any(word in text for word in ("bug", "fix", "test", "python", "code", "function", "edit")):
+            return "code"
+        if any(word in text for word in ("policy", "permission", "secret", "export")):
+            return "policy"
+        if any(word in text for word in ("memory", "remember", "context")):
+            return "project_memory"
+        return "chat_general"
 
     def get_readonly_files_messages(self):
         readonly_messages = []
