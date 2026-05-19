@@ -5,6 +5,7 @@ aider.code-workspace
 .aider*
 .oacs/
 .agent/oacs/
+.agent/secrets/
 aider_chat.egg-info/
 build
 dist/

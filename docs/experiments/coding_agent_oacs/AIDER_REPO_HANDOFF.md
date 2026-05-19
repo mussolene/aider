@@ -43,6 +43,24 @@ Both `.agent/oacs/` and `.oacs/` are gitignored. The passphrase and encrypted
 database are local machine state, not repo artifacts. Keep this local unless a
 separate throwaway test fixture is explicitly needed.
 
+Local API tokens for experiments should be stored in:
+
+- `.agent/secrets/local.env`
+
+That directory is gitignored. Expected variable names:
+
+- `CURSOR_API_KEY`
+- `HF_TOKEN`
+- `HUGGINGFACE_HUB_TOKEN`
+
+Load them for a shell session with:
+
+```sh
+set -a
+. .agent/secrets/local.env
+set +a
+```
+
 ## Running The Local Harness
 
 The standalone harness is:
