@@ -68,6 +68,8 @@ def run_coding_agent_benchmark(
     repair_loop: bool = False,
 ) -> dict[str, str]:
     tasks = _load_tasks(Path(tasks_path))
+    if _env_truthy("AIDER_BENCHMARK_UNLINK_TASKS_AFTER_LOAD"):
+        Path(tasks_path).unlink(missing_ok=True)
     if limit > 0:
         tasks = tasks[:limit]
     output = Path(output_dir)
@@ -219,13 +221,10 @@ def _run_task(
     if task_dir.exists():
         shutil.rmtree(task_dir)
     task_dir.mkdir(parents=True)
-    for rel_path, content in dict(task["files"]).items():
-        path = task_dir / rel_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(str(content), encoding="utf-8")
+    _write_task_files(task, task_dir, visible_only=True)
 
     prompt = _prompt_for_mode(task, mode, task_dir)
-    context_chars = len(prompt) + sum(len(str(content)) for content in dict(task["files"]).values())
+    context_chars = len(prompt) + sum(len(str(content)) for _, content in _visible_task_files(task).items())
     base_url = oacs_base_url if mode == "aider_oacs_backend" else direct_base_url
     llm_history = (task_dir / ".aider.llm.history").resolve()
     args = _aider_command(
@@ -245,6 +244,8 @@ def _run_task(
     if _mode_uses_cursor_provider(mode, model) or _mode_uses_oacs(mode):
         fork_path = Path(os.environ.get("AIDER_OACS_FORK_PATH", str(_repo_root()))).resolve()
         proc_env["PYTHONPATH"] = str(fork_path)
+    if _mode_uses_oacs(mode):
+        proc_env.setdefault("OACS_DB", str((_repo_root() / ".agent/oacs/oacs.db").resolve()))
     args.extend(_agent_files(task))
 
     perf_before = _perf_snapshot(children=True)
@@ -271,6 +272,7 @@ def _run_task(
     latency_ms = (time.perf_counter() - started) * 1000
     perf_after = _perf_snapshot(children=True)
 
+    _write_hidden_task_files(task, task_dir)
     tests_pass = False if timed_out else _run_test_command(task, task_dir, timeout=timeout)
     file_checks_pass = _file_checks_pass(task, task_dir)
     patch_applies = _files_changed(task, task_dir)
@@ -339,10 +341,7 @@ def _run_multiturn_task(
     if task_dir.exists():
         shutil.rmtree(task_dir)
     task_dir.mkdir(parents=True)
-    for rel_path, content in dict(task["files"]).items():
-        path = task_dir / rel_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(str(content), encoding="utf-8")
+    _write_task_files(task, task_dir, visible_only=True)
 
     base_url = oacs_base_url if mode == "aider_oacs_backend" else direct_base_url
     oacs_log_file = task_dir / ".oacs_hook.jsonl"
@@ -350,6 +349,8 @@ def _run_multiturn_task(
     if _mode_uses_cursor_provider(mode, model) or _mode_uses_oacs(mode):
         fork_path = Path(os.environ.get("AIDER_OACS_FORK_PATH", str(_repo_root()))).resolve()
         proc_env["PYTHONPATH"] = str(fork_path)
+    if _mode_uses_oacs(mode):
+        proc_env.setdefault("OACS_DB", str((_repo_root() / ".agent/oacs/oacs.db").resolve()))
 
     total_latency_ms = 0.0
     stdout_parts: list[str] = []
@@ -402,6 +403,7 @@ def _run_multiturn_task(
         path = task_dir / rel_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(str(content), encoding="utf-8")
+    _write_hidden_task_files(task, task_dir)
 
     perf_after = _perf_snapshot(children=True)
     tests_pass = False if timed_out else _run_test_command(task, task_dir, timeout=timeout)
@@ -417,7 +419,7 @@ def _run_multiturn_task(
         prompt_tokens += turn_prompt
         completion_tokens += turn_completion
         model_calls += _model_calls_count(history)
-    context_chars = sum(len(str(content)) for content in dict(task["files"]).values()) + sum(
+    context_chars = sum(len(str(content)) for content in _visible_task_files(task).values()) + sum(
         len(str(turn.get("prompt", ""))) for turn in list(task.get("turns", []))
     )
     oacs_stats = _oacs_log_stats(oacs_log_file) if _mode_uses_oacs(mode) else {}
@@ -625,6 +627,35 @@ def _agent_files(task: dict[str, Any]) -> list[str]:
     return sorted(str(item) for item in files)
 
 
+def _visible_task_files(task: dict[str, Any]) -> dict[str, Any]:
+    files = dict(task["files"])
+    agent_files = set(_agent_files(task))
+    return {rel_path: content for rel_path, content in files.items() if rel_path in agent_files}
+
+
+def _hidden_task_files(task: dict[str, Any]) -> dict[str, Any]:
+    files = dict(task["files"])
+    agent_files = set(_agent_files(task))
+    return {rel_path: content for rel_path, content in files.items() if rel_path not in agent_files}
+
+
+def _write_task_files(task: dict[str, Any], task_dir: Path, *, visible_only: bool) -> None:
+    files = _visible_task_files(task) if visible_only else dict(task["files"])
+    for rel_path, content in files.items():
+        path = task_dir / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(str(content), encoding="utf-8")
+
+
+def _write_hidden_task_files(task: dict[str, Any], task_dir: Path) -> None:
+    for rel_path, content in _hidden_task_files(task).items():
+        path = task_dir / rel_path
+        if path.exists():
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(str(content), encoding="utf-8")
+
+
 def _file_checks_pass(task: dict[str, Any], task_dir: Path) -> bool:
     checks = task.get("checks", {})
     for item in checks.get("file_contains", []):
@@ -688,6 +719,10 @@ def _decode_timeout_output(value: bytes | str | None) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return value
+
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _oacs_log_stats(path: Path) -> dict[str, float | int]:
