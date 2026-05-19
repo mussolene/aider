@@ -17,6 +17,7 @@ import yaml
 from PIL import Image
 
 from aider import __version__
+from aider.cursor_provider import cursor_completion, is_cursor_model
 from aider.dump import dump  # noqa: F401
 from aider.llm import litellm
 from aider.openrouter import OpenRouterModelManager
@@ -357,6 +358,14 @@ class Model(ModelSettings):
             self.get_editor_model(editor_model, editor_edit_format)
 
     def get_model_info(self, model):
+        if is_cursor_model(model):
+            return dict(
+                litellm_provider="cursor",
+                max_input_tokens=200000,
+                max_output_tokens=16000,
+                input_cost_per_token=0,
+                output_cost_per_token=0,
+            )
         return model_info_manager.get_model_info(model)
 
     def _copy_fields(self, source):
@@ -419,6 +428,14 @@ class Model(ModelSettings):
                 self.accepts_settings.append("reasoning_effort")
 
     def apply_generic_model_settings(self, model):
+        if model.startswith("cursor/"):
+            self.edit_format = "whole"
+            self.use_repo_map = True
+            self.streaming = False
+            self.use_temperature = False
+            self.reminder = "user"
+            return  # <--
+
         if "/o3-mini" in model:
             self.edit_format = "diff"
             self.use_repo_map = True
@@ -713,6 +730,7 @@ class Model(ModelSettings):
             anthropic="ANTHROPIC_API_KEY",
             groq="GROQ_API_KEY",
             fireworks_ai="FIREWORKS_API_KEY",
+            cursor="CURSOR_API_KEY",
         )
         var = None
         if model in OPENAI_MODELS:
@@ -970,6 +988,14 @@ class Model(ModelSettings):
     def send_completion(self, messages, functions, stream, temperature=None):
         if os.environ.get("AIDER_SANITY_CHECK_TURNS"):
             sanity_check_messages(messages)
+
+        if is_cursor_model(self.name):
+            if functions is not None:
+                raise RuntimeError("Cursor Aider provider does not support tool/function calls")
+            key = json.dumps({"model": self.name, "stream": stream}, sort_keys=True).encode()
+            hash_object = hashlib.sha1(key)
+            res = cursor_completion(model=self.name, messages=messages, timeout=request_timeout)
+            return hash_object, res
 
         if self.is_deepseek_r1():
             messages = ensure_alternating_roles(messages)
