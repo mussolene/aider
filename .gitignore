@@ -3,6 +3,8 @@
 aider.code-workspace
 *.pyc
 .aider*
+.oacs/
+.agent/oacs/
 aider_chat.egg-info/
 build
 dist/
