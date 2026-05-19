@@ -17,7 +17,12 @@ import yaml
 from PIL import Image
 
 from aider import __version__
-from aider.cursor_provider import cursor_completion, is_cursor_model
+from aider.cursor_provider import (
+    CURSOR_MAX_INPUT_TOKENS,
+    CURSOR_MAX_OUTPUT_TOKENS,
+    cursor_agent_completion,
+    is_cursor_model,
+)
 from aider.dump import dump  # noqa: F401
 from aider.llm import litellm
 from aider.openrouter import OpenRouterModelManager
@@ -361,10 +366,8 @@ class Model(ModelSettings):
         if is_cursor_model(model):
             return dict(
                 litellm_provider="cursor",
-                max_input_tokens=200000,
-                max_output_tokens=16000,
-                input_cost_per_token=0,
-                output_cost_per_token=0,
+                max_input_tokens=CURSOR_MAX_INPUT_TOKENS,
+                max_output_tokens=CURSOR_MAX_OUTPUT_TOKENS,
             )
         return model_info_manager.get_model_info(model)
 
@@ -428,7 +431,7 @@ class Model(ModelSettings):
                 self.accepts_settings.append("reasoning_effort")
 
     def apply_generic_model_settings(self, model):
-        if model.startswith("cursor/"):
+        if is_cursor_model(model):
             self.edit_format = "whole"
             self.use_repo_map = True
             self.streaming = False
@@ -994,7 +997,7 @@ class Model(ModelSettings):
                 raise RuntimeError("Cursor Aider provider does not support tool/function calls")
             key = json.dumps({"model": self.name, "stream": stream}, sort_keys=True).encode()
             hash_object = hashlib.sha1(key)
-            res = cursor_completion(model=self.name, messages=messages, timeout=request_timeout)
+            res = cursor_agent_completion(model=self.name, messages=messages, timeout=request_timeout)
             return hash_object, res
 
         if self.is_deepseek_r1():
