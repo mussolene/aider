@@ -282,9 +282,10 @@ deterministic memory retrieval and selective injection, not learned behavior.
   option once the fork branch is no longer patch-only.
 - Add relevance thresholds to `acs memory query` so irrelevant global benchmark
   memories do not leak into unrelated tasks.
-- Tighten policy/context gates so ordinary project-context tasks do not inject
-  OACS unless there is exact evidence text, not just metadata.
-- Add a small stable Aider plugin/fork test suite for gate decisions.
+- Tighten context selection policy so ordinary project-context tasks do not
+  inject OACS unless there is exact evidence text, not just metadata.
+- Add a small stable Aider plugin/fork test suite for context selection
+  decisions.
 - Run the same benchmark with Qwen3 4B/8B and one stronger coding model.
 - Add per-task final prompt token extraction from Aider history instead of
   relying only on rounded Aider console token lines.
